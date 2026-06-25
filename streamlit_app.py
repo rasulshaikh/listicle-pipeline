@@ -1,13 +1,13 @@
 """Interactive demo UI for the listicle pipeline.
 
-Same two gates as the CLI (`pipeline/run.py`), same pipeline functions —
+Same two gates as the CLI (`pipeline/run.py`), same pipeline functions -
 this just renders them as a browser flow instead of terminal output:
 
   Gate 1: run research -> review the tool table -> approve
   Gate 2: generate + assemble + QA -> review checks/draft -> publish
 
 Mock mode (default) is free and offline. Live mode needs a visitor-supplied
-Anthropic API key, used only in-memory for that session — never stored or
+Anthropic API key, used only in-memory for that session - never stored or
 committed.
 """
 from __future__ import annotations
@@ -30,14 +30,14 @@ def _load_yaml(p) -> dict:
 
 
 def _qa_report_md(report, sections, editorial=None) -> str:
-    lines = [f"# QA report — {sections.title}", "",
+    lines = [f"# QA report - {sections.title}", "",
              f"- words: {report.word_count}  ·  read time: ~{report.read_minutes} min",
              f"- hard fail: {report.hard_fail}", "", "| check | status | detail |",
              "| --- | --- | --- |"]
     for c in report.checks:
         lines.append(f"| {c.name} | {c.status.upper()} | {c.detail} |")
     if editorial:
-        lines += ["", f"## Editorial review — {editorial['score']}/100",
+        lines += ["", f"## Editorial review - {editorial['score']}/100",
                   f"_{editorial['verdict']}_", ""]
         lines += [f"- {i}" for i in editorial.get("issues", [])] or ["- (no issues flagged)"]
     return "\n".join(lines) + "\n"
@@ -49,7 +49,7 @@ st.set_page_config(page_title="Listicle Pipeline", layout="wide")
 st.title("Listicle Generation Pipeline")
 st.caption(
     "Research → **Gate 1** (verify facts) → Generate → Assemble → QA → "
-    "**Gate 2** (editorial sign-off). Same pipeline as the CLI — see ARCHITECTURE.md."
+    "**Gate 2** (editorial sign-off). Same pipeline as the CLI - see ARCHITECTURE.md."
 )
 
 if "bundle" not in st.session_state:
@@ -109,13 +109,13 @@ if run_research:
 
 bundle = st.session_state.bundle
 if bundle:
-    st.subheader("Gate 1 — verify research")
+    st.subheader("Gate 1 - verify research")
     st.dataframe(
         [{
             "Tool": t.name + (" ★ house" if t.is_house else ""),
             "Pricing": t.pricing,
-            "G2": t.g2_rating or "—",
-            "Capterra": t.capterra_rating or "—",
+            "G2": t.g2_rating or "-",
+            "Capterra": t.capterra_rating or "-",
             "Sources": len(t.sources),
         } for t in bundle.tools],
         use_container_width=True, hide_index=True,
@@ -140,7 +140,7 @@ if bundle:
 draft = st.session_state.draft
 if draft:
     report, sections, editorial = draft["report"], draft["sections"], draft["editorial"]
-    st.subheader("Gate 2 — editorial sign-off")
+    st.subheader("Gate 2 - editorial sign-off")
     st.write(
         f"**{report.word_count} words** · ~{report.read_minutes} min read · "
         + ("\U0001f534 hard checks FAILED" if report.hard_fail else "\U0001f7e2 all hard checks pass")
@@ -150,7 +150,7 @@ if draft:
         use_container_width=True, hide_index=True,
     )
     if editorial:
-        st.write(f"**Editorial score: {editorial['score']}/100** — {editorial['verdict']}")
+        st.write(f"**Editorial score: {editorial['score']}/100** - {editorial['verdict']}")
         for issue in editorial.get("issues", []):
             st.write(f"- {issue}")
 

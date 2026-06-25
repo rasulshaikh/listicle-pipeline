@@ -4,10 +4,10 @@ Three implementations behind one interface:
   - LiveAnthropicClient: real Claude calls. Research uses Anthropic's
     server-side web_search tool so facts are grounded + carry citations.
   - OpenAIClient: same interface, backed by OpenAI's Responses API and its
-    hosted web_search tool — lets the Streamlit demo run live for visitors
+    hosted web_search tool - lets the Streamlit demo run live for visitors
     who only have an OpenAI key.
   - MockClient: reads fixtures from disk. Lets you run the whole pipeline with
-    zero API spend and no network — for tests, demos, and offline development.
+    zero API spend and no network - for tests, demos, and offline development.
 
 Keeping this behind an interface is what makes the system testable and what
 lets the rest of the pipeline stay ignorant of *how* text gets produced.
@@ -65,13 +65,13 @@ class LLMClient(Protocol):
 
 
 # --------------------------------------------------------------------------- #
-# shared prompt logic (provider-agnostic — both live clients mix this in)
+# shared prompt logic (provider-agnostic - both live clients mix this in)
 # --------------------------------------------------------------------------- #
 class _PromptedClient:
     """The six LLMClient methods, implemented once against `self._complete()`.
 
     Any live client just needs to provide `_complete(prompt, *, use_search,
-    max_tokens)` and `self.house` — the prompts and JSON parsing are identical
+    max_tokens)` and `self.house` - the prompts and JSON parsing are identical
     regardless of which provider is doing the completion.
     """
 
@@ -110,7 +110,7 @@ class _PromptedClient:
             f"Return ONLY a JSON object matching this schema: {schema}\n"
             "Rules: pricing as a short string like 'From $10,000/year' or "
             "'Custom pricing'. Ratings like '4.6/5'. Use null for anything you cannot "
-            "verify — never guess a number. strengths: 3-5 concise factual bullet "
+            "verify - never guess a number. strengths: 3-5 concise factual bullet "
             "phrases. gaps: 1-3 honest limitations (yes, even for the vendor's own "
             "product). best_for: one sentence naming the team/use case. sources: the "
             "URLs you actually used.\n" + self._voice_rules()
@@ -235,7 +235,7 @@ class LiveAnthropicClient(_PromptedClient):
                 code = getattr(e, "status_code", None)
                 if code == 400 and "web_search" in str(e).lower():
                     raise RuntimeError(
-                        "web_search returned 400 — an org admin must enable Web Search in "
+                        "web_search returned 400 - an org admin must enable Web Search in "
                         "the Claude Console before research can run."
                     ) from e
                 if code in (500, 503, 529) and attempt < 4:
@@ -298,7 +298,7 @@ class OpenAIClient(_PromptedClient):
                 code = getattr(e, "status_code", None)
                 if code == 400 and "web_search" in str(e).lower():
                     raise RuntimeError(
-                        "web_search returned 400 — this API key/project may not have "
+                        "web_search returned 400 - this API key/project may not have "
                         "access to the Responses API web_search tool."
                     ) from e
                 if code in (500, 503, 529) and attempt < 4:

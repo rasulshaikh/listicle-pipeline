@@ -8,7 +8,7 @@ Research → **[human gate 1]** → generate → assemble → QA → **[human ga
 
 ## Why it's built this way (the 30-second version)
 
-The hard part of a comparison listicle isn't the writing — it's (1) not hallucinating
+The hard part of a comparison listicle isn't the writing - it's (1) not hallucinating
 prices/ratings, (2) producing the *same* structure every time, and (3) not sounding
 like AI. So: research is grounded with web search and **frozen behind a human check**,
 the article skeleton is **code (not a prompt)**, the writer is **forbidden from inventing
@@ -28,7 +28,7 @@ cp .env.example .env          # then add your key:  ANTHROPIC_API_KEY=sk-ant-...
 
 ## Run it
 
-**Mock mode** (fixtures, no API spend, no network — start here):
+**Mock mode** (fixtures, no API spend, no network - start here):
 
 ```bash
 # One-shot demo (skips the pauses):
@@ -45,7 +45,7 @@ python -m pipeline.run batch --csv config/batch_example.csv --mock
 #   -> output/batch_<ts>/SUMMARY.md flags which drafts need a human (gate 2 at scale)
 ```
 
-**Live mode** — drop `--mock` (and optionally pick a model / extra editing / link checks):
+**Live mode** - drop `--mock` (and optionally pick a model / extra editing / link checks):
 
 ```bash
 python -m pipeline.run research --input config/categories/event_registration.yaml
@@ -66,21 +66,21 @@ Same two gates as the CLI, rendered as a browser flow: pick a category, run
 research, review the tool table (gate 1), then approve to generate + QA +
 review the draft (gate 2). Defaults to mock mode; live mode takes your own
 Anthropic or OpenAI key in the sidebar (used only for that session, never
-stored) — both providers ground research through their own hosted
+stored) - both providers ground research through their own hosted
 web-search tool.
 
 ## Make a new listicle
 
 Copy `config/categories/event_registration.yaml`, change the keywords, audience, count,
-and `house_product`, and run. That's the whole interface — one YAML per article. The
+and `house_product`, and run. That's the whole interface - one YAML per article. The
 placeholder swap from the brief ("Top X **{category}** Software") = one new file.
 
 ## The two human gates
 
 | Gate | When | What the human does | Cost of a miss here |
 | --- | --- | --- | --- |
-| 1 — verify research | after `research` | confirm the tool list; fix any wrong price/rating in `research.json` | ~30s |
-| 2 — editorial sign-off | after `generate` | skim `draft.md` for tone + the intro hook | minutes |
+| 1 - verify research | after `research` | confirm the tool list; fix any wrong price/rating in `research.json` | ~30s |
+| 2 - editorial sign-off | after `generate` | skim `draft.md` for tone + the intro hook | minutes |
 
 Gate 1 is the important one: facts are the biggest risk, and they're cheapest to fix
 before any prose is written.
@@ -93,7 +93,7 @@ meta ≤160 chars · primary keyword in title + H1.
 Soft (warn at gate 2): secondary-keyword coverage · AI-tell phrases · sentence-length
 variety · link health · title length · **competitor gaps sourced** · no risky absolute
 claims · facts freshness.
-Plus an **LLM editorial review** at gate 2 — a rubric score (hook, differentiation,
+Plus an **LLM editorial review** at gate 2 - a rubric score (hook, differentiation,
 balance, fluff, scannability) with concrete fixes. Skip with `--no-review`.
 
 ## Repo map
@@ -106,10 +106,10 @@ config/
 pipeline/
   schema.py                   data contracts (the fact-carrying bundle)
   llm.py                      LLMClient: LiveAnthropic + OpenAI (both web search) + Mock (fixtures)
-  research.py                 stage 1 — grounded intel  -> ResearchBundle
-  generate.py                 stage 2 — intro / FAQ / SEO metadata only
-  assemble.py                 stage 3 — deterministic template + hyperlinking
-  qa.py                       stage 4 — structural + fact + brand-safety + humanization
+  research.py                 stage 1 - grounded intel  -> ResearchBundle
+  generate.py                 stage 2 - intro / FAQ / SEO metadata only
+  assemble.py                 stage 3 - deterministic template + hyperlinking
+  qa.py                       stage 4 - structural + fact + brand-safety + humanization
   run.py                      CLI: research / generate / all / batch  (the two gates)
 streamlit_app.py             browser UI for the same two-gate flow  -> streamlit run streamlit_app.py
 tests/test_pipeline.py        offline regression tests (incl. the guardrail)  -> pytest -q
