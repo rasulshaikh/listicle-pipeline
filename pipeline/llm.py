@@ -191,12 +191,18 @@ class LiveAnthropicClient(_PromptedClient):
     WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 6}
 
     def __init__(self, model: str, house_style: dict, api_key: str | None = None):
+        import threading
+
         import anthropic  # lazy: mock runs don't need the SDK installed
         self._anthropic = anthropic
         self.model = model
         self.house = house_style
-        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        # 120s per request: long enough for a multi-search turn, short enough that a
+        # stalled call retries instead of hanging the whole (now-parallel) batch.
+        self.client = anthropic.Anthropic(api_key=api_key, timeout=120.0) if api_key \
+            else anthropic.Anthropic(timeout=120.0)
         self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "web_searches": 0}
+        self._usage_lock = threading.Lock()  # research.py fans calls out across threads
 
     # --- low-level calls ---------------------------------------------------- #
     def _complete(self, prompt: str, *, use_search: bool, max_tokens: int = 2048) -> str:
@@ -215,7 +221,7 @@ class LiveAnthropicClient(_PromptedClient):
         """messages.create with retry/backoff on transient errors + usage tracking.
 
         Handles the real-world constraints this tool will hit at volume:
-          - 429 rate limits and 5xx/overloaded -> exponential backoff
+          - 429 rate limits, timeouts, and 5xx/overloaded -> exponential backoff
           - 400 'web search not enabled' -> a clear, actionable error
         """
         import time
@@ -227,7 +233,7 @@ class LiveAnthropicClient(_PromptedClient):
                     model=self.model, max_tokens=max_tokens, tools=tools, messages=messages,
                 )
                 break
-            except A.RateLimitError:
+            except (A.RateLimitError, A.APITimeoutError):
                 if attempt == 4:
                     raise
                 time.sleep(delay); delay *= 2
@@ -243,13 +249,14 @@ class LiveAnthropicClient(_PromptedClient):
                 else:
                     raise
         u = getattr(resp, "usage", None)
-        if u:
-            self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
-            self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
-            stu = getattr(u, "server_tool_use", None)
-            if stu:
-                self.usage["web_searches"] += getattr(stu, "web_search_requests", 0) or 0
-        self.usage["calls"] += 1
+        with self._usage_lock:
+            if u:
+                self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
+                self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
+                stu = getattr(u, "server_tool_use", None)
+                if stu:
+                    self.usage["web_searches"] += getattr(stu, "web_search_requests", 0) or 0
+            self.usage["calls"] += 1
         return resp
 
 
@@ -266,12 +273,18 @@ class OpenAIClient(_PromptedClient):
     WEB_SEARCH_TOOL = {"type": "web_search"}
 
     def __init__(self, model: str, house_style: dict, api_key: str | None = None):
+        import threading
+
         import openai  # lazy: mock runs don't need the SDK installed
         self._openai = openai
         self.model = model
         self.house = house_style
-        self.client = openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
+        # 120s per request: long enough for a web-search turn, short enough that a
+        # stalled call retries instead of hanging the whole (now-parallel) batch.
+        self.client = openai.OpenAI(api_key=api_key, timeout=120.0) if api_key \
+            else openai.OpenAI(timeout=120.0)
         self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+        self._usage_lock = threading.Lock()  # research.py fans calls out across threads
 
     def _complete(self, prompt: str, *, use_search: bool, max_tokens: int = 2048) -> str:
         tools = [self.WEB_SEARCH_TOOL] if use_search else []
@@ -290,7 +303,7 @@ class OpenAIClient(_PromptedClient):
                     tools=tools, input=input,
                 )
                 break
-            except O.RateLimitError:
+            except (O.RateLimitError, O.APITimeoutError):
                 if attempt == 4:
                     raise
                 time.sleep(delay); delay *= 2
@@ -306,10 +319,11 @@ class OpenAIClient(_PromptedClient):
                 else:
                     raise
         u = getattr(resp, "usage", None)
-        if u:
-            self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
-            self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
-        self.usage["calls"] += 1
+        with self._usage_lock:
+            if u:
+                self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
+                self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
+            self.usage["calls"] += 1
         return resp
 
 

@@ -6,6 +6,7 @@ touches the open web. Its output is what a human reviews at gate 1.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 from .llm import LLMClient
@@ -20,18 +21,24 @@ def run(client: LLMClient, inp: dict, house_style: dict, mode: str, model: str) 
 
     names = client.discover_tools(category, audience, count, house)
 
-    profiles: list[ToolProfile] = []
-    for name in names:
+    def _research_one(name: str) -> ToolProfile:
         raw = client.research_tool(name, category, audience, is_house=(name == house))
         try:
-            profiles.append(ToolProfile(**raw))
+            return ToolProfile(**raw)
         except Exception as e:  # one bad tool shouldn't sink the run
             print(f"  ! could not parse profile for {name}: {e} - inserting placeholder")
-            profiles.append(ToolProfile(name=name, is_house=(name == house),
-                                        gaps=["RESEARCH FAILED - fill in manually"]))
+            return ToolProfile(name=name, is_house=(name == house),
+                                gaps=["RESEARCH FAILED - fill in manually"])
 
-    dims = [Dimension(**d) for d in client.derive_dimensions(
-        category, audience, inp.get("secondary_keywords", []))]
+    # Each tool's research is an independent web-search call with no shared state,
+    # so fan them out instead of paying for N sequential round trips (the main
+    # source of "live mode is slow" - derive_dimensions overlaps with them too).
+    with ThreadPoolExecutor(max_workers=len(names) + 1) as pool:
+        tool_futures = [pool.submit(_research_one, name) for name in names]
+        dims_future = pool.submit(client.derive_dimensions, category, audience,
+                                   inp.get("secondary_keywords", []))
+        profiles = [f.result() for f in tool_futures]
+        dims = [Dimension(**d) for d in dims_future.result()]
 
     return ResearchBundle(
         primary_keyword=inp["primary_keyword"],
