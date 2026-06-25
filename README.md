@@ -56,6 +56,17 @@ Flags: `--mock` (fixtures) · `--model claude-sonnet-4-6` (default; `claude-opus
 max quality) · `--humanize` (extra LLM editing pass) · `--check-links` (verify links
 resolve) · `--out DIR` · `--fixtures DIR`.
 
+## Interactive demo (Streamlit)
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Same two gates as the CLI, rendered as a browser flow: pick a category, run
+research, review the tool table (gate 1), then approve to generate + QA +
+review the draft (gate 2). Defaults to mock mode; live mode takes your own
+API key in the sidebar (used only for that session, never stored).
+
 ## Make a new listicle
 
 Copy `config/categories/event_registration.yaml`, change the keywords, audience, count,
@@ -98,6 +109,7 @@ pipeline/
   assemble.py                 stage 3 — deterministic template + hyperlinking
   qa.py                       stage 4 — structural + fact + brand-safety + humanization
   run.py                      CLI: research / generate / all / batch  (the two gates)
+streamlit_app.py             browser UI for the same two-gate flow  -> streamlit run streamlit_app.py
 tests/test_pipeline.py        offline regression tests (incl. the guardrail)  -> pytest -q
 .github/workflows/ci.yml      CI: runs pytest + an offline pipeline smoke test
 fixtures/                     synthetic sample data for mock runs
