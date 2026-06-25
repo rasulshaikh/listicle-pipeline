@@ -1,8 +1,11 @@
 """LLM access layer.
 
-Two implementations behind one interface:
-  - LiveAnthropicClient: real Claude calls. Research uses the server-side
-    web_search tool so facts are grounded + carry citations.
+Three implementations behind one interface:
+  - LiveAnthropicClient: real Claude calls. Research uses Anthropic's
+    server-side web_search tool so facts are grounded + carry citations.
+  - OpenAIClient: same interface, backed by OpenAI's Responses API and its
+    hosted web_search tool — lets the Streamlit demo run live for visitors
+    who only have an OpenAI key.
   - MockClient: reads fixtures from disk. Lets you run the whole pipeline with
     zero API spend and no network — for tests, demos, and offline development.
 
@@ -62,72 +65,15 @@ class LLMClient(Protocol):
 
 
 # --------------------------------------------------------------------------- #
-# live client
+# shared prompt logic (provider-agnostic — both live clients mix this in)
 # --------------------------------------------------------------------------- #
-class LiveAnthropicClient:
-    WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 6}
+class _PromptedClient:
+    """The six LLMClient methods, implemented once against `self._complete()`.
 
-    def __init__(self, model: str, house_style: dict, api_key: str | None = None):
-        import anthropic  # lazy: mock runs don't need the SDK installed
-        self._anthropic = anthropic
-        self.model = model
-        self.house = house_style
-        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
-        self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "web_searches": 0}
-
-    # --- low-level calls ---------------------------------------------------- #
-    def _complete(self, prompt: str, *, use_search: bool, max_tokens: int = 2048) -> str:
-        """One completion. Loops on pause_turn so long searches don't get cut off."""
-        tools = [self.WEB_SEARCH_TOOL] if use_search else []
-        messages = [{"role": "user", "content": prompt}]
-        for _ in range(4):
-            resp = self._create(max_tokens=max_tokens, tools=tools, messages=messages)
-            if resp.stop_reason == "pause_turn":
-                messages.append({"role": "assistant", "content": resp.content})
-                continue
-            return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
-        raise RuntimeError("web_search did not converge after repeated pause_turn")
-
-    def _create(self, *, max_tokens, tools, messages):
-        """messages.create with retry/backoff on transient errors + usage tracking.
-
-        Handles the real-world constraints this tool will hit at volume:
-          - 429 rate limits and 5xx/overloaded -> exponential backoff
-          - 400 'web search not enabled' -> a clear, actionable error
-        """
-        import time
-        A = self._anthropic
-        delay, resp = 2.0, None
-        for attempt in range(5):
-            try:
-                resp = self.client.messages.create(
-                    model=self.model, max_tokens=max_tokens, tools=tools, messages=messages,
-                )
-                break
-            except A.RateLimitError:
-                if attempt == 4:
-                    raise
-                time.sleep(delay); delay *= 2
-            except A.APIStatusError as e:
-                code = getattr(e, "status_code", None)
-                if code == 400 and "web_search" in str(e).lower():
-                    raise RuntimeError(
-                        "web_search returned 400 — an org admin must enable Web Search in "
-                        "the Claude Console before research can run."
-                    ) from e
-                if code in (500, 503, 529) and attempt < 4:
-                    time.sleep(delay); delay *= 2
-                else:
-                    raise
-        u = getattr(resp, "usage", None)
-        if u:
-            self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
-            self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
-            stu = getattr(u, "server_tool_use", None)
-            if stu:
-                self.usage["web_searches"] += getattr(stu, "web_search_requests", 0) or 0
-        self.usage["calls"] += 1
-        return resp
+    Any live client just needs to provide `_complete(prompt, *, use_search,
+    max_tokens)` and `self.house` — the prompts and JSON parsing are identical
+    regardless of which provider is doing the completion.
+    """
 
     def _voice_rules(self) -> str:
         v = self.house.get("voice", [])
@@ -135,7 +81,6 @@ class LiveAnthropicClient:
         return ("Write in this voice: " + " ".join(v) +
                 f"\nNever use these AI-tell phrases: {banned}.")
 
-    # --- interface ---------------------------------------------------------- #
     def discover_tools(self, category, audience, count, house) -> List[str]:
         prompt = (
             f"Search the web for the most credible {category} used by {audience} in "
@@ -237,6 +182,135 @@ class LiveAnthropicClient:
             + markdown[:8000]
         )
         return extract_json(self._complete(prompt, use_search=False, max_tokens=600))
+
+
+# --------------------------------------------------------------------------- #
+# live clients
+# --------------------------------------------------------------------------- #
+class LiveAnthropicClient(_PromptedClient):
+    WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 6}
+
+    def __init__(self, model: str, house_style: dict, api_key: str | None = None):
+        import anthropic  # lazy: mock runs don't need the SDK installed
+        self._anthropic = anthropic
+        self.model = model
+        self.house = house_style
+        self.client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+        self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "web_searches": 0}
+
+    # --- low-level calls ---------------------------------------------------- #
+    def _complete(self, prompt: str, *, use_search: bool, max_tokens: int = 2048) -> str:
+        """One completion. Loops on pause_turn so long searches don't get cut off."""
+        tools = [self.WEB_SEARCH_TOOL] if use_search else []
+        messages = [{"role": "user", "content": prompt}]
+        for _ in range(4):
+            resp = self._create(max_tokens=max_tokens, tools=tools, messages=messages)
+            if resp.stop_reason == "pause_turn":
+                messages.append({"role": "assistant", "content": resp.content})
+                continue
+            return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        raise RuntimeError("web_search did not converge after repeated pause_turn")
+
+    def _create(self, *, max_tokens, tools, messages):
+        """messages.create with retry/backoff on transient errors + usage tracking.
+
+        Handles the real-world constraints this tool will hit at volume:
+          - 429 rate limits and 5xx/overloaded -> exponential backoff
+          - 400 'web search not enabled' -> a clear, actionable error
+        """
+        import time
+        A = self._anthropic
+        delay, resp = 2.0, None
+        for attempt in range(5):
+            try:
+                resp = self.client.messages.create(
+                    model=self.model, max_tokens=max_tokens, tools=tools, messages=messages,
+                )
+                break
+            except A.RateLimitError:
+                if attempt == 4:
+                    raise
+                time.sleep(delay); delay *= 2
+            except A.APIStatusError as e:
+                code = getattr(e, "status_code", None)
+                if code == 400 and "web_search" in str(e).lower():
+                    raise RuntimeError(
+                        "web_search returned 400 — an org admin must enable Web Search in "
+                        "the Claude Console before research can run."
+                    ) from e
+                if code in (500, 503, 529) and attempt < 4:
+                    time.sleep(delay); delay *= 2
+                else:
+                    raise
+        u = getattr(resp, "usage", None)
+        if u:
+            self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
+            self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
+            stu = getattr(u, "server_tool_use", None)
+            if stu:
+                self.usage["web_searches"] += getattr(stu, "web_search_requests", 0) or 0
+        self.usage["calls"] += 1
+        return resp
+
+
+# --------------------------------------------------------------------------- #
+# OpenAI live client
+# --------------------------------------------------------------------------- #
+class OpenAIClient(_PromptedClient):
+    """Same interface as LiveAnthropicClient, backed by OpenAI's Responses API.
+
+    The hosted `web_search` tool runs server-side within a single
+    responses.create() call, so (unlike Anthropic's pause_turn) there's no
+    continuation loop needed here.
+    """
+    WEB_SEARCH_TOOL = {"type": "web_search"}
+
+    def __init__(self, model: str, house_style: dict, api_key: str | None = None):
+        import openai  # lazy: mock runs don't need the SDK installed
+        self._openai = openai
+        self.model = model
+        self.house = house_style
+        self.client = openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
+        self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+
+    def _complete(self, prompt: str, *, use_search: bool, max_tokens: int = 2048) -> str:
+        tools = [self.WEB_SEARCH_TOOL] if use_search else []
+        resp = self._create(max_output_tokens=max_tokens, tools=tools, input=prompt)
+        return resp.output_text
+
+    def _create(self, *, max_output_tokens, tools, input):
+        """responses.create with retry/backoff on transient errors + usage tracking."""
+        import time
+        O = self._openai
+        delay, resp = 2.0, None
+        for attempt in range(5):
+            try:
+                resp = self.client.responses.create(
+                    model=self.model, max_output_tokens=max_output_tokens,
+                    tools=tools, input=input,
+                )
+                break
+            except O.RateLimitError:
+                if attempt == 4:
+                    raise
+                time.sleep(delay); delay *= 2
+            except O.APIStatusError as e:
+                code = getattr(e, "status_code", None)
+                if code == 400 and "web_search" in str(e).lower():
+                    raise RuntimeError(
+                        "web_search returned 400 — this API key/project may not have "
+                        "access to the Responses API web_search tool."
+                    ) from e
+                if code in (500, 503, 529) and attempt < 4:
+                    time.sleep(delay); delay *= 2
+                else:
+                    raise
+        u = getattr(resp, "usage", None)
+        if u:
+            self.usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
+            self.usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
+        self.usage["calls"] += 1
+        return resp
 
 
 # --------------------------------------------------------------------------- #

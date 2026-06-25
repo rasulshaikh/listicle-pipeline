@@ -65,7 +65,9 @@ streamlit run streamlit_app.py
 Same two gates as the CLI, rendered as a browser flow: pick a category, run
 research, review the tool table (gate 1), then approve to generate + QA +
 review the draft (gate 2). Defaults to mock mode; live mode takes your own
-API key in the sidebar (used only for that session, never stored).
+Anthropic or OpenAI key in the sidebar (used only for that session, never
+stored) — both providers ground research through their own hosted
+web-search tool.
 
 ## Make a new listicle
 
@@ -103,7 +105,7 @@ config/
   batch_example.csv           many keyword sets for the batch command
 pipeline/
   schema.py                   data contracts (the fact-carrying bundle)
-  llm.py                      LLMClient: LiveAnthropic (web search) + Mock (fixtures)
+  llm.py                      LLMClient: LiveAnthropic + OpenAI (both web search) + Mock (fixtures)
   research.py                 stage 1 — grounded intel  -> ResearchBundle
   generate.py                 stage 2 — intro / FAQ / SEO metadata only
   assemble.py                 stage 3 — deterministic template + hyperlinking

@@ -18,7 +18,7 @@ import streamlit as st
 import yaml
 
 from pipeline import assemble, generate, qa, research
-from pipeline.llm import LiveAnthropicClient, MockClient
+from pipeline.llm import LiveAnthropicClient, MockClient, OpenAIClient
 
 ROOT = Path(__file__).resolve().parent
 CATEGORIES_DIR = ROOT / "config" / "categories"
@@ -65,12 +65,20 @@ with st.sidebar:
     )
     mode_choice = st.radio("Mode", ["Mock (offline, free)", "Live (real web search)"])
     is_mock = mode_choice.startswith("Mock")
-    model, api_key = "claude-sonnet-4-6", None
+    provider, model, api_key = "anthropic", "claude-sonnet-4-6", None
     if not is_mock:
-        model = st.selectbox("Model", ["claude-sonnet-4-6", "claude-opus-4-8"])
-        api_key = st.text_input("Your Anthropic API key", type="password")
-        st.caption("Used only for this session, never stored. Web search must be "
-                   "enabled for this key in the Claude Console.")
+        provider_choice = st.radio("Provider", ["Anthropic (Claude)", "OpenAI (GPT)"])
+        provider = "openai" if provider_choice.startswith("OpenAI") else "anthropic"
+        if provider == "anthropic":
+            model = st.selectbox("Model", ["claude-sonnet-4-6", "claude-opus-4-8"])
+            api_key = st.text_input("Your Anthropic API key", type="password")
+            st.caption("Used only for this session, never stored. Web search must be "
+                       "enabled for this key in the Claude Console.")
+        else:
+            model = st.selectbox("Model", ["gpt-5.5", "gpt-5.5-pro"])
+            api_key = st.text_input("Your OpenAI API key", type="password")
+            st.caption("Used only for this session, never stored. Needs access to the "
+                       "Responses API's web_search tool.")
     run_research = st.button("1. Run research", use_container_width=True, type="primary")
 
 
@@ -80,6 +88,8 @@ def _client():
     if not api_key:
         st.error("Enter an API key in the sidebar, or switch to Mock mode.")
         st.stop()
+    if provider == "openai":
+        return OpenAIClient(model=model, house_style=house_style, api_key=api_key)
     return LiveAnthropicClient(model=model, house_style=house_style, api_key=api_key)
 
 
