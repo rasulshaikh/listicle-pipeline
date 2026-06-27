@@ -33,7 +33,7 @@ A "95% ready" draft is not a quality opinion, so the pipeline encodes it as chec
 ## Tradeoffs made
 
 - **Determinism over flair.** A fixed template guarantees consistency but means every article shares a shape - accepted, because consistency is the product.
-- **Anthropic web search over a dedicated SEO/reviews API.** One vendor, one key, citations included, no scraping infrastructure - at the cost of less structured review data than a paid G2/Capterra feed (which has no clean public API anyway).
+- **Hosted web search over a dedicated SEO/reviews API.** The model's own web search (Claude or OpenAI) gives one key and built-in citations with no scraping infrastructure, at the cost of less structured review data than a paid G2/Capterra feed (which has no clean public API anyway
 - **Facts as bullet phrases in research, not free-form generation.** Slightly less "creative" phrasing of strengths/gaps, in exchange for traceability and balance.
 - **Human-in-the-loop over fully autonomous.** Slower per article, but the verification gate is what makes the output trustworthy enough to publish under the brand.
 
